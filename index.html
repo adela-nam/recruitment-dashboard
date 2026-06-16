@@ -53,8 +53,8 @@ code{background:#dbeafe;padding:1px 5px;border-radius:3px;font-size:11px}
 
 <!-- 설정 -->
 <script>
-const SHEET_ID = "1GyZ2mBzl-_ST4iaPnK5Oy-oHajg4B_ChjMjybF4QemY";
-const API_KEY  = "AIzaSyDMcRVt2h0aMYh1MghxeRJmyHhpDxx-C30";
+const SHEET_ID = "YOUR_GOOGLE_SHEET_ID";
+const API_KEY  = "YOUR_GOOGLE_API_KEY";
 </script>
 
 <div id="app"></div>
@@ -414,13 +414,14 @@ async function syncSheets(){
       fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(n)}?key=${API_KEY}`).then(r=>r.json())
     ));
     const toObj=rows=>{
-  if(!rows?.values||rows.values.length<3)return[];
-  const header=rows.values[1];
-  const rest=rows.values.slice(2);
-  return rest
-    .filter(row=>row.some(v=>v!==""))
-    .map(row=>Object.fromEntries(header.map((h,i)=>[h,row[i]||""])));
-};
+      if(!rows?.values||rows.values.length<3)return[];
+      // 1행 = 타이틀, 2행 = 헤더, 3행~ = 데이터
+      const header=rows.values[1];
+      const rest=rows.values.slice(2);
+      return rest
+        .filter(row=>row.some(v=>v!=="")) // 빈 행 제외
+        .map(row=>Object.fromEntries(header.map((h,i)=>[h,row[i]||""])));
+    };
     setState({data:{positions:toObj(results[0]),postings:toObj(results[1]),resumes:toObj(results[2])},
       lastSync:new Date(), isReal:true, loading:false});
   }catch(e){
