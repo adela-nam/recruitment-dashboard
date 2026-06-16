@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>전사 채용현황 대시보드</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#f1f5f9;font-family:'Apple SD Gothic Neo','맑은 고딕',sans-serif;letter-spacing:-0.02em;font-size:14px}
+button{font-family:inherit;cursor:pointer}
+table{border-collapse:collapse;width:100%}
+th{background:#f9fafb;padding:10px 16px;text-align:left;font-size:11px;font-weight:700;color:#6b7280;border-bottom:1px solid #e5e7eb;white-space:nowrap}
+td{padding:10px 16px;border-bottom:1px solid #f3f4f6;font-size:13px}
+tr:nth-child(even) td{background:#fafafa}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px}
+.card{background:#fff;border-radius:12px;padding:20px;box-shadow:0 1px 6px rgba(0,0,0,0.08)}
+.badge{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:99px;font-size:11px;font-weight:700;white-space:nowrap}
+.tab-btn{padding:8px 16px;background:none;border:none;font-size:13px;color:#6b7280;border-bottom:2px solid transparent;white-space:nowrap;transition:all .15s}
+.tab-btn.active{color:#6366f1;border-bottom-color:#6366f1;font-weight:700}
+.filter-btn{padding:5px 14px;border-radius:99px;border:none;font-size:12px;font-weight:600;background:#f3f4f6;color:#374151}
+.filter-btn.active{background:#6366f1;color:#fff}
+.filter-btn2.active{background:#8b5cf6;color:#fff}
+.sync-btn{padding:6px 16px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700}
+.sync-btn:disabled{opacity:.6}
+.info-box{background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:12px;color:#1e40af;line-height:1.8}
+code{background:#dbeafe;padding:1px 5px;border-radius:3px;font-size:11px}
+/* 차트 */
+.bar-wrap{display:flex;align-items:flex-end;gap:8px;height:160px;padding-top:10px}
+.bar-col{display:flex;flex-direction:column;align-items:center;flex:1;gap:4px}
+.bar-col .bar{width:100%;border-radius:4px 4px 0 0;transition:opacity .2s;min-height:4px}
+.bar-col .bar:hover{opacity:.8}
+.bar-col .label{font-size:10px;color:#6b7280;text-align:center;word-break:keep-all}
+.bar-col .val{font-size:11px;font-weight:700;color:#374151}
+.pie-wrap{display:flex;align-items:center;gap:20px}
+.pie-legend{display:flex;flex-direction:column;gap:8px}
+.pie-legend-item{display:flex;align-items:center;gap:8px;font-size:12px}
+/* 파이프라인 */
+.stage-bar{display:flex;gap:4px;margin-top:12px}
+.stage-cell{flex:1;padding:12px 4px;text-align:center;border-radius:8px;border:1.5px solid #e5e7eb;background:#f9fafb}
+.stage-cell.active{border-color:var(--c)}
+.stage-num{font-size:20px;font-weight:800;color:#d1d5db}
+.stage-cell.active .stage-num{color:var(--c)}
+.stage-name{font-size:10px;color:#9ca3af;font-weight:600;margin-top:2px;word-break:keep-all}
+.stage-cell.active .stage-name{color:var(--c)}
+.candidate-tag{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;background:#f9fafb;border-radius:99px;border:1px solid #e5e7eb}
+/* 전형단계 바 */
+.stage-mini{display:flex;gap:2px}
+.stage-dot{width:13px;height:6px;border-radius:3px;background:#e5e7eb}
+</style>
+</head>
+<body>
+
+<!-- 설정 -->
+<script>
+const SHEET_ID = "1x26aoRt6te3JnJ1gMoBhQ7pNE0WI5cJu";
+const API_KEY  = "AIzaSyDMcRVt2h0aMYh1MghxeRJmyHhpDxx-C30";
+</script>
+
+<div id="app"></div>
+
+<script>
+const STAGE_ORDER  = ["서류검토","1차면접","2차면접","최종면접","처우협의","입사확정"];
+const STAGE_COLORS = ["#6366f1","#8b5cf6","#a78bfa","#c4b5fd","#f59e0b","#10b981"];
+const PIE_COLORS   = ["#6366f1","#8b5cf6","#ec4899","#f59e0b","#10b981","#06b6d4"];
+
+const STATUS_COLOR = {
+  "채용중":  {bg:"#d1fae5",text:"#065f46",dot:"#10b981"},
+  "채용완료":{bg:"#dbeafe",text:"#1e40af",dot:"#3b82f6"},
+  "보류":    {bg:"#fef3c7",text:"#92400e",dot:"#f59e0b"},
+  "진행중":  {bg:"#ede9fe",text:"#5b21b6",dot:"#8b5cf6"},
+  "검토중":  {bg:"#fef9c3",text:"#713f12",dot:"#eab308"},
+  "탈락":    {bg:"#fee2e2",text:"#991b1b",dot:"#ef4444"},
+  "합격":    {bg:"#d1fae5",text:"#065f46",dot:"#10b981"},
+  "게재중":  {bg:"#d1fae5",text:"#065f46",dot:"#10b981"},
+  "종료":    {bg:"#f3f4f6",text:"#6b7280",dot:"#9ca3af"},
+};
+
+const SAMPLE = {
+  positions:[
+    {id:"P001",department:"개발팀", title:"Frontend 개발자 (Senior)",headcount:2,priority:"긴급",status:"채용중"},
+    {id:"P002",department:"개발팀", title:"Backend 개발자 (Python)", headcount:1,priority:"높음",status:"채용중"},
+    {id:"P003",department:"마케팅", title:"그로스 마케터",            headcount:1,priority:"보통",status:"채용중"},
+    {id:"P004",department:"인사팀", title:"HR Business Partner",    headcount:1,priority:"높음",status:"채용중"},
+    {id:"P005",department:"영업팀", title:"Enterprise 영업 매니저", headcount:3,priority:"긴급",status:"채용중"},
+    {id:"P006",department:"디자인", title:"Product Designer",       headcount:1,priority:"보통",status:"채용완료"},
+    {id:"P007",department:"데이터", title:"Data Engineer",          headcount:2,priority:"높음",status:"채용중"},
+    {id:"P008",department:"개발팀", title:"iOS 개발자",              headcount:1,priority:"보통",status:"보류"},
+  ],
+  postings:[
+    {id:"J001",positionId:"P001",platform:"원티드",  postDate:"2026-05-01",endDate:"2026-06-30",status:"게재중"},
+    {id:"J002",positionId:"P001",platform:"사람인",  postDate:"2026-05-01",endDate:"2026-06-30",status:"게재중"},
+    {id:"J003",positionId:"P002",platform:"LinkedIn",postDate:"2026-05-10",endDate:"2026-07-10",status:"게재중"},
+    {id:"J004",positionId:"P003",platform:"원티드",  postDate:"2026-04-20",endDate:"2026-05-31",status:"종료"},
+    {id:"J005",positionId:"P004",platform:"잡코리아",postDate:"2026-05-15",endDate:"2026-06-30",status:"게재중"},
+    {id:"J006",positionId:"P005",platform:"사람인",  postDate:"2026-05-20",endDate:"2026-07-20",status:"게재중"},
+    {id:"J007",positionId:"P007",platform:"LinkedIn",postDate:"2026-06-01",endDate:"2026-07-31",status:"게재중"},
+  ],
+  resumes:[
+    {id:"R001",positionId:"P001",name:"김지현",receiveDate:"2026-05-10",source:"원티드",  stage:"2차면접",result:"진행중"},
+    {id:"R002",positionId:"P001",name:"이민준",receiveDate:"2026-05-12",source:"사람인",  stage:"1차면접",result:"진행중"},
+    {id:"R003",positionId:"P001",name:"박서연",receiveDate:"2026-05-15",source:"추천",    stage:"서류검토",result:"검토중"},
+    {id:"R004",positionId:"P002",name:"최도윤",receiveDate:"2026-05-20",source:"LinkedIn",stage:"최종면접",result:"진행중"},
+    {id:"R005",positionId:"P002",name:"정아린",receiveDate:"2026-05-22",source:"LinkedIn",stage:"1차면접",result:"탈락"},
+    {id:"R006",positionId:"P003",name:"강하준",receiveDate:"2026-05-05",source:"원티드",  stage:"처우협의",result:"진행중"},
+    {id:"R007",positionId:"P004",name:"윤서우",receiveDate:"2026-05-25",source:"잡코리아",stage:"서류검토",result:"검토중"},
+    {id:"R008",positionId:"P005",name:"임지우",receiveDate:"2026-06-01",source:"사람인",  stage:"서류검토",result:"검토중"},
+    {id:"R009",positionId:"P005",name:"한채은",receiveDate:"2026-06-02",source:"사람인",  stage:"서류검토",result:"합격"},
+    {id:"R010",positionId:"P007",name:"오승현",receiveDate:"2026-06-05",source:"LinkedIn",stage:"서류검토",result:"검토중"},
+    {id:"R011",positionId:"P001",name:"신예린",receiveDate:"2026-06-08",source:"추천",    stage:"입사확정",result:"합격"},
+    {id:"R012",positionId:"P005",name:"백준서",receiveDate:"2026-06-10",source:"사람인",  stage:"1차면접",result:"진행중"},
+  ],
+};
+
+// ── state ──────────────────────────────────────────────────────────────────
+let state = {
+  tab: "overview",
+  data: SAMPLE,
+  loading: false,
+  lastSync: null,
+  isReal: false,
+  posFilter: "전체",
+  stageFilter: "전체",
+};
+
+function setState(patch){ Object.assign(state, patch); render(); }
+
+// ── helpers ────────────────────────────────────────────────────────────────
+function badge(status){
+  const s = STATUS_COLOR[status] || {bg:"#f3f4f6",text:"#6b7280",dot:"#9ca3af"};
+  return `<span class="badge" style="background:${s.bg};color:${s.text}">
+    <span style="width:6px;height:6px;border-radius:50%;background:${s.dot};display:inline-block;flex-shrink:0"></span>
+    ${status}</span>`;
+}
+
+function statCard(label, value, sub, color, icon){
+  return `<div class="card" style="border-top:3px solid ${color}">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div>
+        <div style="font-size:11px;color:#6b7280;margin-bottom:4px;font-weight:600">${label}</div>
+        <div style="font-size:30px;font-weight:800;color:#111;line-height:1.1">${value}</div>
+        ${sub ? `<div style="font-size:11px;color:#9ca3af;margin-top:4px">${sub}</div>` : ""}
+      </div>
+      <span style="font-size:24px">${icon}</span>
+    </div>
+  </div>`;
+}
+
+// ── SVG 차트 (외부 라이브러리 없이) ──────────────────────────────────────
+function barChart(data, colorFn){
+  const max = Math.max(...data.map(d=>d.count), 1);
+  const W=480, H=160, PL=0, PB=32, PT=10;
+  const barW = Math.floor((W - PL) / data.length * 0.55);
+  const gap   = Math.floor((W - PL) / data.length);
+  let bars="", labels="", vals="";
+  data.forEach((d,i)=>{
+    const x = PL + gap*i + gap/2;
+    const bh = Math.max(4, Math.round((d.count/max)*(H-PB-PT)));
+    const y  = H - PB - bh;
+    const c  = typeof colorFn === "function" ? colorFn(i) : colorFn;
+    bars   += `<rect x="${x-barW/2}" y="${y}" width="${barW}" height="${bh}" rx="3" fill="${c}"/>`;
+    vals   += `<text x="${x}" y="${y-4}" text-anchor="middle" font-size="11" font-weight="700" fill="#374151">${d.count||""}</text>`;
+    const words = d.name.length > 4 ? [d.name.slice(0,3), d.name.slice(3)] : [d.name];
+    words.forEach((w,wi)=>{
+      labels += `<text x="${x}" y="${H-PB+14+wi*13}" text-anchor="middle" font-size="10" fill="#6b7280">${w}</text>`;
+    });
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-height:${H}px">
+    <line x1="0" y1="${H-PB}" x2="${W}" y2="${H-PB}" stroke="#f3f4f6"/>
+    ${bars}${vals}${labels}
+  </svg>`;
+}
+
+function hBarChart(data){
+  const max = Math.max(...data.map(d=>d.count), 1);
+  const H=data.length*34+10, W=400, LW=72;
+  let rows="";
+  data.forEach((d,i)=>{
+    const y=10+i*34;
+    const bw=Math.max(4,Math.round((d.count/max)*(W-LW-40)));
+    rows+=`<text x="${LW-6}" y="${y+14}" text-anchor="end" font-size="11" fill="#374151">${d.name}</text>
+      <rect x="${LW}" y="${y+2}" width="${bw}" height="20" rx="3" fill="#6366f1"/>
+      <text x="${LW+bw+4}" y="${y+16}" font-size="11" font-weight="700" fill="#6366f1">${d.count}</text>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-height:${H}px">${rows}</svg>`;
+}
+
+function pieChart(data){
+  const total = data.reduce((a,d)=>a+d.value,0)||1;
+  const cx=80, cy=80, R=60, r=38;
+  let path="", angle=-Math.PI/2;
+  const slices = data.map((d,i)=>{
+    const pct = d.value/total;
+    const a1=angle, a2=angle+pct*2*Math.PI;
+    const x1=cx+R*Math.cos(a1), y1=cy+R*Math.sin(a1);
+    const x2=cx+R*Math.cos(a2), y2=cy+R*Math.sin(a2);
+    const xi1=cx+r*Math.cos(a1), yi1=cy+r*Math.sin(a1);
+    const xi2=cx+r*Math.cos(a2), yi2=cy+r*Math.sin(a2);
+    const lg = pct>0.5?1:0;
+    const p=`M${xi1},${yi1} L${x1},${y1} A${R},${R},0,${lg},1,${x2},${y2} L${xi2},${yi2} A${r},${r},0,${lg},0,${xi1},${yi1} Z`;
+    angle=a2;
+    return `<path d="${p}" fill="${PIE_COLORS[i%PIE_COLORS.length]}"/>`;
+  });
+  const legend = data.map((d,i)=>
+    `<div class="pie-legend-item">
+      <span style="width:10px;height:10px;border-radius:3px;background:${PIE_COLORS[i%PIE_COLORS.length]};flex-shrink:0;display:inline-block"></span>
+      <span style="color:#374151">${d.name}</span>
+      <span style="font-weight:700;color:#111">${d.value}명</span>
+    </div>`
+  ).join("");
+  return `<div class="pie-wrap">
+    <svg viewBox="0 0 160 160" width="160" height="160" style="flex-shrink:0">${slices.join("")}</svg>
+    <div class="pie-legend">${legend}</div>
+  </div>`;
+}
+
+// ── 탭 렌더 ───────────────────────────────────────────────────────────────
+function renderOverview(data){
+  const total  = data.positions.length;
+  const active = data.positions.filter(p=>p.status==="채용중").length;
+  const totalR = data.resumes.length;
+  const inProg = data.resumes.filter(r=>r.result==="진행중"||r.result==="검토중").length;
+  const hired  = data.resumes.filter(r=>r.stage==="입사확정").length;
+  const actPost= data.postings.filter(j=>j.status==="게재중").length;
+
+  const stageData = STAGE_ORDER.map((s,i)=>({name:s,count:data.resumes.filter(r=>r.stage===s).length}));
+  const srcMap={};
+  data.resumes.forEach(r=>{srcMap[r.source]=(srcMap[r.source]||0)+1;});
+  const srcData=Object.entries(srcMap).map(([name,value])=>({name,value}));
+  const deptMap={};
+  data.positions.forEach(p=>{deptMap[p.department]=(deptMap[p.department]||0)+1;});
+  const deptData=Object.entries(deptMap).map(([name,count])=>({name,count}));
+
+  return `
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
+    ${statCard("전체 채용 포지션", total, `활성 ${active}건`, "#6366f1", "📋")}
+    ${statCard("총 지원자", totalR, `진행중 ${inProg}명`, "#8b5cf6", "👥")}
+    ${statCard("게재 중 공고", actPost, "플랫폼 합산", "#f59e0b", "📢")}
+    ${statCard("입사 확정", hired, "이번 사이클", "#10b981", "🎉")}
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+    <div class="card">
+      <div style="font-weight:700;margin-bottom:12px;font-size:13px">전형 단계별 지원자 현황</div>
+      ${barChart(stageData, i=>STAGE_COLORS[i])}
+    </div>
+    <div class="card">
+      <div style="font-weight:700;margin-bottom:12px;font-size:13px">지원 경로 분포</div>
+      ${pieChart(srcData)}
+    </div>
+  </div>
+  <div class="card">
+    <div style="font-weight:700;margin-bottom:12px;font-size:13px">부서별 채용 포지션 현황</div>
+    ${hBarChart(deptData)}
+  </div>`;
+}
+
+function renderPositions(data){
+  const depts=["전체",...new Set(data.positions.map(p=>p.department))];
+  const filtered=state.posFilter==="전체"?data.positions:data.positions.filter(p=>p.department===state.posFilter);
+  const pColor={긴급:"#ef4444",높음:"#f59e0b",보통:"#6b7280"};
+  const buttons=depts.map(d=>`<button class="filter-btn${state.posFilter===d?" active":""}" onclick="setState({posFilter:'${d}'})">${d}</button>`).join("");
+  const rows=filtered.map((p,i)=>{
+    const cnt=data.resumes.filter(r=>r.positionId===p.id).length;
+    return `<tr><td style="font-size:11px;color:#9ca3af;font-family:monospace">${p.id}</td>
+      <td>${p.department}</td>
+      <td style="font-weight:600;color:#111">${p.title}</td>
+      <td style="text-align:center">${p.headcount}명</td>
+      <td><span style="font-size:11px;font-weight:700;color:${pColor[p.priority]||'#6b7280'}">${p.priority==="긴급"?"🔴":p.priority==="높음"?"🟡":"⚪"} ${p.priority}</span></td>
+      <td>${badge(p.status)}</td>
+      <td style="font-weight:700;color:#6366f1">${cnt}명</td></tr>`;
+  }).join("");
+  return `<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">${buttons}</div>
+  <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>포지션 ID</th><th>부서</th><th>직무명</th><th>채용인원</th><th>우선순위</th><th>상태</th><th>지원자 수</th></tr></thead>
+    <tbody>${rows}</tbody></table></div>`;
+}
+
+function renderPostings(data){
+  const rows=data.postings.map(j=>{
+    const pos=data.positions.find(p=>p.id===j.positionId);
+    return `<tr><td style="font-size:11px;color:#9ca3af;font-family:monospace">${j.id}</td>
+      <td style="font-size:11px;color:#9ca3af;font-family:monospace">${j.positionId}</td>
+      <td style="font-weight:600;color:#111">${pos?.title||"-"}</td>
+      <td><span style="background:#ede9fe;color:#6d28d9;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700">${j.platform}</span></td>
+      <td style="color:#374151">${j.postDate}</td>
+      <td style="color:#374151">${j.endDate}</td>
+      <td>${badge(j.status)}</td></tr>`;
+  }).join("");
+  return `<div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>공고 ID</th><th>포지션</th><th>직무명</th><th>플랫폼</th><th>게재일</th><th>마감일</th><th>상태</th></tr></thead>
+    <tbody>${rows}</tbody></table></div>`;
+}
+
+function renderResumes(data){
+  const stages=["전체",...STAGE_ORDER];
+  const filtered=state.stageFilter==="전체"?data.resumes:data.resumes.filter(r=>r.stage===state.stageFilter);
+  const buttons=stages.map(s=>{
+    const cnt=s!=="전체"?data.resumes.filter(r=>r.stage===s).length:0;
+    return `<button class="filter-btn filter-btn2${state.stageFilter===s?" active":""}" onclick="setState({stageFilter:'${s}'})">${s}${s!=="전체"?` (${cnt})`:""}</button>`;
+  }).join("");
+  const rows=filtered.map(r=>{
+    const pos=data.positions.find(p=>p.id===r.positionId);
+    const si=STAGE_ORDER.indexOf(r.stage);
+    const dots=STAGE_ORDER.map((_,idx)=>`<span class="stage-dot" style="${idx<=si?`background:${STAGE_COLORS[si]}`:""}"></span>`).join("");
+    return `<tr><td style="font-weight:700;color:#111">${r.name}</td>
+      <td style="font-size:12px">${pos?.title||"-"}</td>
+      <td style="font-size:12px;color:#6b7280">${pos?.department||"-"}</td>
+      <td><span style="background:#f3f4f6;color:#374151;padding:2px 8px;border-radius:4px;font-size:11px">${r.source}</span></td>
+      <td style="color:#374151;font-size:12px">${r.receiveDate}</td>
+      <td><div style="display:flex;align-items:center;gap:6px"><div class="stage-mini">${dots}</div>
+        <span style="font-size:11px;font-weight:600;color:${STAGE_COLORS[si]};white-space:nowrap">${r.stage}</span></div></td>
+      <td>${badge(r.result)}</td></tr>`;
+  }).join("");
+  return `<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">${buttons}</div>
+  <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>지원자명</th><th>직무</th><th>부서</th><th>지원경로</th><th>접수일</th><th>현재 단계</th><th>결과</th></tr></thead>
+    <tbody>${rows}</tbody></table></div>`;
+}
+
+function renderPipeline(data){
+  const positions=data.positions.filter(p=>p.status==="채용중");
+  return positions.map(pos=>{
+    const resumes=data.resumes.filter(r=>r.positionId===pos.id);
+    const stages=STAGE_ORDER.map((stage,idx)=>{
+      const cnt=resumes.filter(r=>r.stage===stage).length;
+      return `<div class="stage-cell${cnt>0?" active":""}" style="--c:${STAGE_COLORS[idx]}">
+        <div class="stage-num">${cnt}</div>
+        <div class="stage-name">${stage}</div>
+      </div>`;
+    }).join("");
+    const tags=resumes.map(r=>`<div class="candidate-tag">
+      <span style="font-size:12px;font-weight:700;color:#111">${r.name}</span>
+      <span style="font-size:10px;color:${STAGE_COLORS[STAGE_ORDER.indexOf(r.stage)]};font-weight:600">(${r.stage})</span>
+      ${badge(r.result)}
+    </div>`).join("");
+    return `<div class="card" style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+        <div>
+          <div style="font-size:14px;font-weight:800;color:#111">${pos.title}</div>
+          <div style="font-size:12px;color:#6b7280;margin-top:2px">${pos.department} · 채용 ${pos.headcount}명</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          ${badge(pos.status)}
+          <span style="font-size:12px;color:#6366f1;font-weight:700">총 ${resumes.length}명 지원</span>
+        </div>
+      </div>
+      <div class="stage-bar">${stages}</div>
+      ${resumes.length>0?`<div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:8px">${tags}</div>`:""}
+    </div>`;
+  }).join("");
+}
+
+// ── 메인 렌더 ─────────────────────────────────────────────────────────────
+function render(){
+  const {tab, data, loading, lastSync, isReal} = state;
+  const TABS=[
+    {id:"overview",label:"📊 종합현황"},
+    {id:"positions",label:"📋 채용포지션"},
+    {id:"postings",label:"📢 채용공고"},
+    {id:"resumes",label:"📄 이력서 현황"},
+    {id:"pipeline",label:"🔄 전형 파이프라인"},
+  ];
+  const tabBtns=TABS.map(t=>`<button class="tab-btn${tab===t.id?" active":""}" onclick="setState({tab:'${t.id}'})">${t.label}</button>`).join("");
+
+  let content="";
+  if(tab==="overview")  content=renderOverview(data);
+  if(tab==="positions") content=renderPositions(data);
+  if(tab==="postings")  content=renderPostings(data);
+  if(tab==="resumes")   content=renderResumes(data);
+  if(tab==="pipeline")  content=renderPipeline(data);
+
+  const infoBox = !isReal ? `<div class="info-box">
+    <strong>🔗 Google Sheets 연동 방법</strong><br>
+    1. 스프레드시트 → 공유 → '링크 있는 모든 사용자(뷰어)' 설정<br>
+    2. 파일 상단 <code>SHEET_ID</code> 를 스프레드시트 URL의 ID로 교체<br>
+    3. Google Cloud Console에서 Sheets API 활성화 후 <code>API_KEY</code> 교체<br>
+    4. 시트 이름: <strong>포지션 / 채용공고 / 이력서</strong> (1행 = 컬럼 헤더)
+  </div>` : "";
+
+  document.getElementById("app").innerHTML = `
+  <div style="background:#fff;border-bottom:1px solid #e5e7eb;position:sticky;top:0;z-index:100">
+    <div style="max-width:1120px;margin:0 auto;padding:0 24px">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 0 10px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:17px">🎯</div>
+          <div>
+            <div style="font-size:16px;font-weight:800;color:#111">전사 채용현황 대시보드</div>
+            <div style="font-size:11px;color:#9ca3af">${isReal?"Google Sheets 연동됨 ✅":"📌 샘플 데이터 표시 중 — SHEET_ID 설정 후 새로고침"}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center">
+          ${lastSync?`<span style="font-size:11px;color:#9ca3af">동기화: ${lastSync.toLocaleTimeString()}</span>`:""}
+          <button class="sync-btn" onclick="syncSheets()" ${loading?"disabled":""}>
+            ${loading?"⏳ 동기화 중...":"🔄 새로고침"}
+          </button>
+        </div>
+      </div>
+      <div style="display:flex">${tabBtns}</div>
+    </div>
+  </div>
+  <div style="max-width:1120px;margin:0 auto;padding:20px 24px">
+    ${infoBox}
+    ${content}
+  </div>`;
+}
+
+// ── Google Sheets 연동 ────────────────────────────────────────────────────
+async function syncSheets(){
+  if(SHEET_ID==="YOUR_GOOGLE_SHEET_ID") return;
+  setState({loading:true});
+  try{
+    const names=["포지션","채용공고","이력서"];
+    const results=await Promise.all(names.map(n=>
+      fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(n)}?key=${API_KEY}`).then(r=>r.json())
+    ));
+    const toObj=rows=>{
+      if(!rows?.values||rows.values.length<2)return[];
+      const[header,...rest]=rows.values;
+      return rest.map(row=>Object.fromEntries(header.map((h,i)=>[h,row[i]||""])));
+    };
+    setState({data:{positions:toObj(results[0]),postings:toObj(results[1]),resumes:toObj(results[2])},
+      lastSync:new Date(), isReal:true, loading:false});
+  }catch(e){
+    console.error(e);
+    setState({loading:false});
+  }
+}
+
+// ── 초기 렌더 ─────────────────────────────────────────────────────────────
+render();
+if(SHEET_ID!=="YOUR_GOOGLE_SHEET_ID") syncSheets();
+</script>
+</body>
+</html>
